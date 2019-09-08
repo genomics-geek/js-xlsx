@@ -3455,7 +3455,7 @@ function fix_row(cstr) { return cstr.replace(/([A-Z]|^)(\d+)$/,"$1$$$2"); }
 function unfix_row(cstr) { return cstr.replace(/\$(\d+)$/,"$1"); }
 
 function decode_col(colstr) { var c = unfix_col(colstr), d = 0, i = 0; for(; i !== c.length; ++i) d = 26*d + c.charCodeAt(i) - 64; return d - 1; }
-function encode_col(col) { var s=""; for(++col; col; col=Math.floor((col-1)/26)) s = String.fromCharCode(((col-1)%26) + 65) + s; return s; }
+function encode_col(col) { if(col < 0) throw new Error("invalid column " + col); var s=""; for(++col; col; col=Math.floor((col-1)/26)) s = String.fromCharCode(((col-1)%26) + 65) + s; return s; }
 function fix_col(cstr) { return cstr.replace(/^([A-Z])/,"$$$1"); }
 function unfix_col(cstr) { return cstr.replace(/^\$([A-Z])/,"$1"); }
 
@@ -4288,23 +4288,22 @@ function cp_doit(f, g, h, o, p) {
 function write_core_props(cp, _opts) {
 	var opts = _opts || {};
 	var o = [XML_HEADER, CORE_PROPS_XML_ROOT], p = {};
-	if(!cp && !opts.Props) return o.join("");
+  if (opts && opts.Props) {
+    if (opts.Props.title) o[o.length]       = '<dc:title>'       + opts.Props.title        + '</dc:title>';
+    if (opts.Props.subject) o[o.length]     = '<dc:subject>'     + opts.Props.subject      + '</dc:subject>';
+    if (opts.Props.creator) o[o.length]     = '<dc:creator>'     + opts.Props.creator      + '</dc:creator>';
+    if (opts.Props.keywords) o[o.length]    = '<cp:keywords>'    + opts.Props.keywords      + '</cp:keywords>';
+    if (opts.Props.description) o[o.length] = '<dc:description>' + opts.Props.description  + '</dc:description>';
+  }
+  if(cp) {
 
-	if(cp) {
-		if(cp.CreatedDate != null) cp_doit("dcterms:created", typeof cp.CreatedDate === "string" ? cp.CreatedDate : write_w3cdtf(cp.CreatedDate, opts.WTF), {"xsi:type":"dcterms:W3CDTF"}, o, p);
-		if(cp.ModifiedDate != null) cp_doit("dcterms:modified", typeof cp.ModifiedDate === "string" ? cp.ModifiedDate : write_w3cdtf(cp.ModifiedDate, opts.WTF), {"xsi:type":"dcterms:W3CDTF"}, o, p);
-	}
+    if(cp.CreatedDate != null) cp_doit("dcterms:created", typeof cp.CreatedDate === "string" ? cp.CreatedDate : write_w3cdtf(cp.CreatedDate, opts.WTF), {"xsi:type":"dcterms:W3CDTF"}, o, p);
+    if(cp.ModifiedDate != null) cp_doit("dcterms:modified", typeof cp.ModifiedDate === "string" ? cp.ModifiedDate : write_w3cdtf(cp.ModifiedDate, opts.WTF), {"xsi:type":"dcterms:W3CDTF"}, o, p);
 
-	for(var i = 0; i != CORE_PROPS.length; ++i) {
-		var f = CORE_PROPS[i];
-		var v = opts.Props && opts.Props[f[1]] != null ? opts.Props[f[1]] : cp ? cp[f[1]] : null;
-		if(v === true) v = "1";
-		else if(v === false) v = "0";
-		else if(typeof v == "number") v = String(v);
-		if(v != null) cp_doit(f[0], v, null, o, p);
-	}
-	if(o.length>2){ o[o.length] = ('</cp:coreProperties>'); o[1]=o[1].replace("/>",">"); }
-	return o.join("");
+  	for(var i = 0; i != CORE_PROPS.length; ++i) { var f = CORE_PROPS[i]; cp_doit(f[0], cp[f[1]], null, o, p); }
+  }
+  if(o.length>2){ o[o.length] = ('</cp:coreProperties>'); o[1]=o[1].replace("/>",">"); }
+  return o.join("");
 }
 /* 15.2.12.3 Extended File Properties Part */
 /* [MS-OSHARED] 2.3.3.2.[1-2].1 (PIDSI/PIDDSI) */
@@ -4932,7 +4931,7 @@ function parse_fills(t, styles, themes, opts) {
 				if(y.theme) fill.bgColor.theme = parseInt(y.theme, 10);
 				if(y.tint) fill.bgColor.tint = parseFloat(y.tint);
 				/* Excel uses ARGB strings */
-				if(y.rgb) fill.bgColor.rgb = y.rgb.slice(-6);
+				if(y.rgb) fill.bgColor.rgb = y.rgb;
 				break;
 			case '<bgColor/>': case '</bgColor>': break;
 
@@ -4942,7 +4941,7 @@ function parse_fills(t, styles, themes, opts) {
 				if(y.theme) fill.fgColor.theme = parseInt(y.theme, 10);
 				if(y.tint) fill.fgColor.tint = parseFloat(y.tint);
 				/* Excel uses ARGB strings */
-				if(y.rgb) fill.fgColor.rgb = y.rgb.slice(-6);
+				if(y.rgb) fill.fgColor.rgb = y.rgb;
 				break;
 			case '<fgColor/>': case '</fgColor>': break;
 
@@ -5220,18 +5219,23 @@ return function parse_sty_xml(data, themes, opts) {
 	/* 18.8.11 colors CT_Colors ? */
 	/* 18.2.10 extLst CT_ExtensionList ? */
 
-	return styles;
-};
+    return styles;
+  };
 })();
 
 var STYLES_XML_ROOT = writextag('styleSheet', null, {
-	'xmlns': XMLNS.main[0],
-	'xmlns:vt': XMLNS.vt
+  'xmlns': XMLNS.main[0],
+  'xmlns:vt': XMLNS.vt
 });
 
 RELS.STY = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
 function write_sty_xml(wb, opts) {
+
+	if (typeof style_builder != 'undefined' && typeof 'require' != 'undefined') {
+    return style_builder.toXml();
+  }
+
 	var o = [XML_HEADER, STYLES_XML_ROOT], w;
 	if(wb.SSF && (w = write_numFmts(wb.SSF)) != null) o[o.length] = w;
 	o[o.length] = ('<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts>');
@@ -5887,27 +5891,38 @@ function default_margins(margins, mode) {
 }
 
 function get_cell_style(styles, cell, opts) {
-	var z = opts.revssf[cell.z != null ? cell.z : "General"];
-	var i = 0x3c, len = styles.length;
-	if(z == null && opts.ssf) {
-		for(; i < 0x188; ++i) if(opts.ssf[i] == null) {
-			SSF.load(cell.z, i);
-			// $FlowIgnore
-			opts.ssf[i] = cell.z;
-			opts.revssf[cell.z] = z = i;
-			break;
+	if (typeof style_builder != 'undefined') {
+
+    if (cell.s && (cell.s == +cell.s)) { return cell.s}  // if its already an integer index, let it be
+    if (!cell.s) cell.s = {}
+    if (cell.z) cell.s.numFmtId = cell.z;
+    cell.s = style_builder.addStyle(cell.s);
+
+    return cell.s;
+  }
+	else {
+		var z = opts.revssf[cell.z != null ? cell.z : "General"];
+		var i = 0x3c, len = styles.length;
+		if(z == null && opts.ssf) {
+			for(; i < 0x188; ++i) if(opts.ssf[i] == null) {
+				SSF.load(cell.z, i);
+				// $FlowIgnore
+				opts.ssf[i] = cell.z;
+				opts.revssf[cell.z] = z = i;
+				break;
+			}
 		}
+		for(i = 0; i != len; ++i) if(styles[i].numFmtId === z) return i;
+		styles[len] = {
+			numFmtId:z,
+			fontId:0,
+			fillId:0,
+			borderId:0,
+			xfId:0,
+			applyNumberFormat:1
+		};
+		return len;
 	}
-	for(i = 0; i != len; ++i) if(styles[i].numFmtId === z) return i;
-	styles[len] = {
-		numFmtId:z,
-		fontId:0,
-		fillId:0,
-		borderId:0,
-		xfId:0,
-		applyNumberFormat:1
-	};
-	return len;
 }
 
 function safe_format(p, fmtid, fillid, opts, themes, styles) {
@@ -6430,8 +6445,8 @@ function write_ws_xml_data(ws, opts, idx, wb) {
 }
 
 var WS_XML_ROOT = writextag('worksheet', null, {
-	'xmlns': XMLNS.main[0],
-	'xmlns:r': XMLNS.r
+  'xmlns': XMLNS.main[0],
+  'xmlns:r': XMLNS.r
 });
 
 function write_ws_xml(idx, opts, wb, rels) {
@@ -7648,7 +7663,6 @@ if(einfo[0] == 0x04 && typeof decrypt_agile !== 'undefined') return decrypt_agil
 if(einfo[0] == 0x02 && typeof decrypt_std76 !== 'undefined') return decrypt_std76(einfo[1], data.content, opts.password || "", opts);
 	throw new Error("File is password-protected");
 }
-
 function write_zip(wb, opts) {
 	_shapeid = 1024;
 	if(opts.bookType == "ods") return write_ods(wb, opts);
@@ -8022,6 +8036,7 @@ function resolve_book_type(o) {
 
 function writeFileSync(wb, filename, opts) {
 	var o = opts||{}; o.type = 'file';
+
 	o.file = filename;
 	resolve_book_type(o);
 	return writeSync(wb, o);
@@ -8082,6 +8097,7 @@ function sheet_to_json(sheet, opts) {
 	if(o.header === 1) header = 1;
 	else if(o.header === "A") header = 2;
 	else if(Array.isArray(o.header)) header = 3;
+	else if(o.header == null) header = 0;
 	switch(typeof range) {
 		case 'string': r = safe_decode_range(range); break;
 		case 'number': r = safe_decode_range(sheet["!ref"]); r.s.r = range; break;
@@ -8288,7 +8304,6 @@ var utils = {
 	sheet_to_formulae: sheet_to_formulae,
 	sheet_to_row_object_array: sheet_to_json
 };
-
 (function(utils) {
 utils.consts = utils.consts || {};
 function add_consts(R/*Array<any>*/) { R.forEach(function(a){ utils.consts[a[0]] = a[1]; }); }
